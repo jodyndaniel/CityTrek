@@ -1,0 +1,1285 @@
+from flask import Flask, render_template, request
+import folium
+import osmnx  # for importing data from Open Street Maps
+from pandas.io.json import json_normalize
+import numpy  # for data manipulation
+import matplotlib
+import geopandas
+import pandas
+import networkx
+import matplotlib.pyplot
+import folium
+import pickle
+from shapely.geometry import Point, LineString, shape
+
+app = Flask(__name__)
+
+
+@app.route('/', methods=["GET", "POST"])  # we are now using these methods to get user input
+def home_page():
+    return render_template('index.html')  # render a template
+
+
+# function to create geopandas
+def create_gdf(df, Longitude, Latitude, projection):
+    return geopandas.GeoDataFrame(df, geometry=geopandas.points_from_xy(df[Longitude], df[Latitude]),
+                                  crs=projection)
+
+@app.route('/output', methods=["POST"])
+def recommendation_output():
+    # Pull input
+    global length, TSC, Rob, key, v, u
+
+    car = request.form.get('car')
+    mug = request.form.get('mug')
+    shade = request.form.get('shade')
+    tsc = request.form.get('tsc')
+
+    orig_xy_form = request.form.get('start_loc')
+    target_xy_form = request.form.get('end_loc')
+    orig_xy_geo = "%s, Toronto, Canada" % orig_xy_form
+    target_xy_geo = "%s, Toronto, Canada" % target_xy_form
+    orig_xy = osmnx.geocode(orig_xy_geo)
+    target_xy = osmnx.geocode(target_xy_geo)
+
+    G_nodes = pandas.read_pickle(app.root_path + '/' +'data/nodes.pkl')
+    G_edges = pandas.read_pickle(app.root_path + '/' +'data/edges.pkl')
+    with open(app.root_path + '/' + 'data/path.p', 'rb') as f:
+        G_walk = pickle.load(f)
+    # need location UTMs to find nodes
+    # need in location UTMs to find nodes
+    start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                  columns=['y', 'x'])
+    start_stop = create_gdf(df=start_stop,
+                            Latitude="y",
+                            Longitude="x",
+                            projection="EPSG:4326").to_crs(epsg=2958)
+
+    # extracting in UTMs
+    orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+    target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+    # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+    orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+    # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+    target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+    ##################################################################################################
+    # Calculate new edge weights
+    Collisons = {}
+    Hillshades = {}
+    Robs = {}
+    TSCs = {}
+    lengths = {}
+    for row in G_edges.itertuples():
+        u = getattr(row, 'u')
+        v = getattr(row, 'v')
+        key = getattr(row, 'key')
+        Collison = getattr(row, 'Collison')
+        Hillshade = getattr(row, 'Hillshade')
+        Rob = getattr(row, 'Rob')
+        TSC = getattr(row, 'TSC')
+        length = getattr(row, 'length')
+
+        Collisons[(u, v, key)] = Collison
+        Hillshades[(u, v, key)] = Hillshade
+        Robs[(u, v, key)] = Rob
+        TSCs[(u, v, key)] = TSC
+        lengths[(u, v, key)] = length
+
+    # Case if empty
+    if not(orig_xy or target_xy or car or mug or tsc or shade):
+        start_coords = (43.7112075, -79.4762563)
+        folium_map = folium.Map(location=start_coords, tiles='CartoDB positron', zoom_start=16, width='80%')
+        map_path = app.root_path + '/' + 'static/map_demo0.html'
+        folium_map.save(map_path)
+        return render_template('index.html',
+                               my_output='map_demo0.html',
+                               my_form_result="Empty")
+    
+    elif (car == 'Yes' and mug == 'Yes' and tsc == 'Yes' and shade == 'No'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(7 * (Robs[key]))
+            temp += int(5 * (TSCs[key]))
+            temp += int(1/40 * (Collisons[key]))
+            optimized[key] = temp
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo1.html'
+        my_map.save(map_path)
+        return render_template('index.html',
+                               my_output='map_demo1.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+    elif (car == 'Yes' and mug == 'Yes' and tsc == 'No' and shade == 'Yes'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(7 * (Robs[key]))
+            temp += int(5 * (TSCs[key]))
+            temp += int(1/40 * Hillshades[key])
+            optimized[key] = temp
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo2.html'
+        my_map.save(map_path)
+        return render_template('index.html',
+                               my_output='map_demo2.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+
+    elif (car == 'Yes' and mug == 'Yes' and tsc == 'No' and shade == 'No'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(7 *  (Robs[key]))
+            temp += int(6 * (Collisons[key]))
+            optimized[key] = temp
+
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo3.html'
+        my_map.save(map_path)
+
+        return render_template('index.html',
+                               my_output='map_demo3.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+    elif (car == 'Yes' and mug == 'No' and tsc == 'No' and shade == 'No'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(6 * (Collisons[key]))
+            optimized[key] = temp
+
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo4.html'
+        my_map.save(map_path)
+        return render_template('index.html',
+                               my_output='map_demo4.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+
+    elif (car == 'Yes' and mug == 'Yes' and tsc == 'Yes' and shade == 'Yes'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(7 * (Robs[key]))
+            temp += int(5 * (TSCs[key]))
+            temp += int(6 * (Collisons[key]))
+            temp += int(1/40 * (Hillshades[key]))  # max 50300
+            optimized[key] = temp
+
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo5.html'
+        my_map.save(map_path)
+        return render_template('index.html',
+                               my_output='map_demo5.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+
+    elif (car == 'No' and mug == 'Yes' and tsc == 'Yes' and shade == 'Yes'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(7 * (Robs[key]))
+            temp += int(5 * (TSCs[key]))
+            temp += int(1/40 * Hillshades[key])  # max 50300
+            optimized[key] = temp
+
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo6.html'
+        my_map.save(map_path)
+
+        return render_template('index.html',
+                               my_output='map_demo6.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+
+    elif (car == 'No' and mug == 'No' and tsc == 'Yes' and shade == 'Yes'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(5 * (TSCs[key]))
+            temp += int(1/40 * Hillshades[key])  # max 50300
+            optimized[key] = temp
+
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo7.html'
+        my_map.save(map_path)
+
+        return render_template('index.html',
+                               my_output='map_demo7.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+    elif (car == 'No' and mug == 'No' and tsc == 'No' and shade == 'Yes'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(1/40 * Hillshades[key])  # max 50300
+            optimized[key] = temp
+
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo8.html'
+        my_map.save(map_path)
+
+        return render_template('index.html',
+                               my_output='map_demo8.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+    elif (car == 'No' and mug == 'No' and tsc == 'Yes' and shade == 'No'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(5 * (TSCs[key]))
+            optimized[key] = temp
+
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo9.html'
+        my_map.save(map_path)
+
+        return render_template('index.html',
+                               my_output='map_demo9.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+    elif (car == 'No' and mug == 'Yes' and tsc == 'No' and shade == 'No'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(6 * (Robs[key]))
+            optimized[key] = temp
+
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo10.html'
+        my_map.save(map_path)
+
+        return render_template('index.html',
+                               my_output='map_demo10.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+
+    elif (car == 'No' and mug == 'No' and tsc == 'No' and shade == 'No'):
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        shortest_route_write = ('This optimized route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = 'You did not select any preferences - no optimized route is provided'
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo11.html'
+        my_map.save(map_path)
+
+        return render_template('index.html',
+                               my_output='map_demo11.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+
+    elif  (car == 'Yes' and mug == 'No' and tsc == 'Yes' and shade == 'Yes'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(5 * (TSCs[key]))
+            temp += int(6 * (Collisons[key]))
+            temp += int(1/40 * (Hillshades[key]))  # max 50300
+            optimized[key] = temp
+
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo12.html'
+        my_map.save(map_path)
+        return render_template('index.html',
+                               my_output='map_demo12.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+
+    elif (car == 'No' and mug == 'Yes' and tsc == 'Yes' and shade == 'No'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(7 * (Robs[key]))
+            temp += int(5 * (TSCs[key]))
+            optimized[key] = temp
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo13.html'
+        my_map.save(map_path)
+        return render_template('index.html',
+                               my_output='map_demo13.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+    elif (car == 'Yes' and mug == 'Yes' and tsc == 'No' and shade == 'Yes'):
+        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
+        # Larger value is worse
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(7 * (Robs[key]))
+            temp += int(5 * (TSCs[key]))
+            temp += int(1/40 * Hillshades[key])
+            optimized[key] = temp
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo14.html'
+        my_map.save(map_path)
+        return render_template('index.html',
+                               my_output='map_demo14.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+
+    else:
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = 'You did not select any preferences - no optimized route is provided'
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo15.html'
+        my_map.save(map_path)
+
+        return render_template('index.html',
+                               my_output='map_demo15.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
+
+@app.route('/')
+def get_map_base() -> str:
+    start_coords = (43.7112075, -79.4762563)
+    folium_map = folium.Map(location=start_coords, tiles='CartoDB positron', zoom_start=16, width='80%')
+    map_path = app.root_path + '/' + 'static/map_demo0.html'
+    folium_map.save(map_path)
+    # render the index.html
+    return render_template('index.html')
+
+
+if __name__ == "__main__":
+    app.run(debug=True)

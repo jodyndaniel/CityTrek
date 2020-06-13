@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="">
+  <meta name="author" content="">
+
+  <title>City Trek - Plan With Us</title>
+
+  <!-- Bootstrap core CSS -->
+  <link href="static/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Custom styles for this template -->
+  <link href="static/css/scrolling-nav.css" rel="stylesheet">
+
+</head>
+
+<body id="page-top">
+
+  <section id="CityTrek">
+    <div class="container">
+      <div class="row">
+        <div class="col-lg-8 mx-auto">
+          <h2>CityTrek</h2>
+          <p class="lead">We recommend the shortest path that meets your comfort and safety concerns. Fill in your preferences, start and end location, and then hit go!</p>
+          <ul>
+              <div class="col-sm m-3 text-left">
+                	<form action="/output" method="POST">
+                        <label for="start_loc">Route Start:</label>
+                      	<input input class="form-control" type="text" id="start_loc" name='start_loc' placeholder="e.g. CN Tower">
+                        <label for="end_loc">Route End:</label>
+                      	<input input class="form-control" type="text" id="end_loc" name='end_loc' placeholder="e.g. Casa Loma"><b></b>
+                        <label for="mug">Should your route avoid areas where you are more likely to be mugged?</label>
+                        <select class="form-control" id="mug" name="mug" size="2">
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option></select><br>
+                        <label for="car">Is being hit by oncoming traffic something you are concerned about on your walk?</label>
+                        <select class="form-control" id="car" name="car" size="2">
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option></select>
+                        <label for="shade">Would you prefer a shady path?</label>
+                        <select class="form-control"id="shade" name="shade" size="2">
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>/<select>
+                        <label for="tsc">Do you care if the terrain is flat?</label>
+                        <select class="form-control" id="tsc" name="tsc" size="2">
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>/<select>
+                        <div class="row justify-content-center">
+                            <button type="submit" class="btn btn-secondary btn-lg">Go!</button>
+                        </div>
+                    </form>
+              </div>
+          </ul>
+        </div>
+      </div>
+              </div>
+
+  	{% if my_form_result=='Empty' %}
+  	<div class="row mt-4 justify-content-center">
+        	<h4 class="text-danger text-center">You did not tell us your start and end location, so returning an empty map!</h4><br>
+    </div>
+      <div class="row mt-4 justify-content-center">
+        <p align="center"><iframe class="map", src="{{ url_for('static', filename=my_output) }}" width="800" height="600"></iframe></p>
+  	</div>
+
+  	{% elif my_form_result=='NotEmpty' %}
+  	</div>
+  	<div class="row p-1 m-1 justify-content-center">
+        	<div class="col-lg-8 mx-auto">
+              <p align="center"><iframe class="map", src="{{ url_for('static', filename=my_output) }}" width="800" height="600"></iframe></p>
+        	</div>
+        <div class="row mt-4 justify-content-center">
+            <p style="color:#858786">{{my_textoutput_shortest}}
+                <span style="color:#5C9669">{{my_textoutput_optimized}}</span>
+                </p>
+    </div>
+  	</div>
+
+  	{% else %}
+  	{% endif %}
+            </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-5 bg-dark">
+    <div class="container">
+      <p class="m-0 text-center text-white">Copyright &copy; CityTrek 2020</p>
+    </div>
+    <!-- /.container -->
+  </footer>
+
+  <!-- Bootstrap core JavaScript -->
+  <script src="static/vendor/jquery/jquery.min.js"></script>
+  <script src="static/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Plugin JavaScript -->
+  <script src="static/vendor/jquery-easing/jquery.easing.min.js"></script>
+
+  <!-- Custom JavaScript for this theme -->
+  <script src="static/js/scrolling-nav.js"></script>
+
+</body>
+
+</html>
