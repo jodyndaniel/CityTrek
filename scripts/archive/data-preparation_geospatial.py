@@ -129,7 +129,7 @@ robbery_json_df = pandas.json_normalize(page_robbery['features'])
 # 21543 observations, 30 variables
 
 # Strange, but each column has a properties. prefix
-# Looks wierd, so I am going to remove it
+# Looks weird, so I am going to remove it
 pedestrian_json_df.columns = pedestrian_json_df.columns.str.lstrip('properties.')
 robbery_json_df.columns = robbery_json_df.columns.str.lstrip('properties.')
 # focusing on features that I believe are predictive
@@ -141,7 +141,7 @@ robbery_df = robbery_json_df.iloc[:, numpy.r_[1:3, 9, 10, 11, 12, 13, 14, 5, 8, 
 robbery_df_mugging = robbery_df.loc[robbery_df['ffence'] == 'Robbery - Mugging']  # 6847 rows
 robbery_df_mugging_outside = robbery_df_mugging.loc[robbery_df_mugging['misetype'] == 'Outside']  # 5141 rows
 
-# Some features are unablanced. I will remove accident locations with few observations (<10)
+# Some features are unbalanced. I will remove accident locations with few observations (<10)
 pedestrian_df_road = pedestrian_df.loc[pedestrian_df['ROAD_CLASS'].isin(['Major Arterial', 'Minor Arterial',
                                                                          'Collector', 'Local',
                                                                          'Expressway'])]  # 4986 rows
@@ -178,9 +178,7 @@ pedestrian_points_gdf_4326 = create_gdf(df=pedestrian_df_road,
                                         Latitude="LATITUDE",
                                         Longitude="LONGITUDE",
                                      projection="EPSG:4326")
-pedestrian_points_gdf_2958 = pedestrian_points_gdf_2958.to_crs(
-    {'init': 'epsg:2958'})  # world.to_crs(epsg=3395) would also work
-
+pedestrian_points_gdf_2958 = pedestrian_points_gdf_2958.to_crs({'init': 'epsg:2958'})
 pedestrian_points_gdf_2958.crs
 pedestrian_points_gdf_4326.crs
 # need consistency in labelling for future analyses
@@ -216,7 +214,7 @@ robbery_backgroundpoints_gdf_4326 = create_gdf(df=robbery_backgroundpoints,
                                                projection="EPSG:4326")
 
 robbery_backgroundpoints_gdf_2958 = robbery_backgroundpoints_gdf_2958.to_crs(
-    {'init': 'epsg:2958'})  # world.to_crs(epsg=3395) would also work
+    {'init': 'epsg:2958'})
 
 robbery_backgroundpoints_gdf_2958.crs
 robbery_backgroundpoints_gdf_4326.crs
