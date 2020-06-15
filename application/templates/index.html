@@ -1,15 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 
-<head>
-
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <meta name="description" content="">
-  <meta name="author" content="">
-
+         <img src="/static/header-picture.jpg" height="400" width="1600"/>
   <title>City Trek - Plan With Us</title>
-
   <!-- Bootstrap core CSS -->
   <link href="static/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
 
@@ -25,7 +18,7 @@
       <div class="row">
         <div class="col-lg-8 mx-auto">
           <h2>CityTrek</h2>
-          <p class="lead">We recommend the shortest path that meets your comfort and safety concerns. Fill in your preferences, start and end location, and then hit go!</p>
+          <p class="lead">We recommend the shortest path that meets your comfort and safety concerns. Fill in your start and end locations, preferences, and then hit go!</p>
           <ul>
               <div class="col-sm m-3 text-left">
                 	<form action="/output" method="POST">
@@ -45,8 +38,8 @@
                         <select class="form-control"id="shade" name="shade" size="2">
                             <option value="Yes">Yes</option>
                             <option value="No">No</option>/<select>
-                        <label for="tsc">Do you care if the terrain is flat?</label>
-                        <select class="form-control" id="tsc" name="tsc" size="2">
+                        <label for="rough">Do you care if the terrain is flat?</label>
+                        <select class="form-control" id="rough" name="rough" size="2">
                             <option value="Yes">Yes</option>
                             <option value="No">No</option>/<select>
                         <div class="row justify-content-center">
@@ -74,10 +67,9 @@
               <p align="center"><iframe class="map", src="{{ url_for('static', filename=my_output) }}" width="800" height="600"></iframe></p>
         	</div>
         <div class="row mt-4 justify-content-center">
-            <p style="color:#858786">{{my_textoutput_shortest}}
-                <span style="color:#5C9669">{{my_textoutput_optimized}}</span>
-                </p>
-    </div>
+            <p class="lead">{{my_textoutput_shortest}}<br>{{my_textoutput_optimized}}</p>
+          <ul>
+        </div>
   	</div>
 
   	{% else %}
@@ -88,7 +80,7 @@
   <!-- Footer -->
   <footer class="py-5 bg-dark">
     <div class="container">
-      <p class="m-0 text-center text-white">Copyright &copy; CityTrek 2020</p>
+      <p class="m-0 text-center text-white">Copyright &copy; CityTrek 2020 <br> Header Photo &copy;  <a href="https://www.pexels.com/@andre-furtado-43594"> Andre Furtado </a> </p>
     </div>
     <!-- /.container -->
   </footer>

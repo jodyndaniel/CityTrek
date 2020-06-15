@@ -626,6 +626,47 @@ walk_nodes_gdf_NB['Collison'] = list(walk_nodes_gdf_NB_pd['Collison'])
 walk_nodes_gdf_NB['No_Collison'] = list(walk_nodes_gdf_NB_pd['No_Collison'])
 ###########################################################################
 # now, I need to pickle these files to load later in the shortest path analyses
+
+place_name = 'City of Toronto'
+walk_path_GTA = osmnx.graph_from_place(place_name, network_type='walk')
+# need to reproject to UTM for later analysis
+walk_path_GTA_proj = osmnx.project_graph(walk_path_GTA)
+
+# need edges and nodes to append data to
+walk_nodes_proj, walk_edges_proj = osmnx.graph_to_gdfs(walk_path_GTA, nodes=True, edges=True)
+
+# making sure its in NAD 1983 and save
+walk_nodes_proj = walk_nodes_proj.to_crs(epsg = 2958)
+
+walk_nodes_proj['Index'] = walk_nodes_proj.index
+
+# converting the node data to a geopanda dataframe so that I can extract elevation data
+walk_node_id = pandas.DataFrame(walk_nodes_proj)
+walk_nodes_gdf = create_gdf(df=walk_node_id,
+                            Latitude="y",
+                            Longitude="x",
+                            projection="EPSG:4326")
+walk_nodes_gdf = walk_nodes_gdf.to_crs(epsg=2958)
+
+###################################################################################################
+
+# first I need to set up the IDW with known values
+coords_mugg = numpy.column_stack((robbery_model_nodes_2958['geometry'].x,robbery_model_nodes_2958['geometry'].y))
+coords_collison = numpy.column_stack((pedestrian_model_nodes_2958['geometry'].x,pedestrian_model_nodes_2958['geometry'].y))
+coords_walk_nodes = numpy.column_stack((walk_nodes_gdf['geometry'].x,walk_nodes_gdf['geometry'].y))
+
+values_mugg = list(robbery_model_nodes_2958['Mugging'])
+values_collison = list(pedestrian_model_nodes_2958['Collison'])
+
+idw_mugging = ShepardIDWInterpolator(coords_mugg,values_mugg)
+idw_collision = ShepardIDWInterpolator(coords_collison,values_collison)
+
+interpolated_mugging = idw_mugging(coords_walk_nodes,n_neighbors=19,power=1.0,reg=5.,eps=0.1)
+interpolated_collision = idw_collision(coords_walk_nodes,n_neighbors=19,power=1.0,reg=5.,eps=0.1)
+
+with open("C:/Users/jodyn/Google Drive/Insight/Processed Data/walk_path_GTA_proj.p", 'wb') as f:
+    pickle.dump(walk_path_GTA_proj,f)
+
 walk_nodes_gdf_NB.to_pickle("data/cleaned/walknodes.pkl")
 walk_edges_proj.to_pickle("data/cleaned/edges.pkl")
 walk_nodes_proj.to_pickle("data/cleaned/nodes.pkl")

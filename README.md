@@ -1,7 +1,7 @@
 # Insight Data Science Fellowship
 
 This repository is for the web application **CityTrek**.
- Imagine you had an unexpected layover in downtown Toronto,
+ Imagine you had an unexpected layover in Toronto,
  you would like to **walk**  from the Casa Loma to the CN tower,
  but you have no idea whether the path your navigation 
  application has recommended is comfortable or safe. 

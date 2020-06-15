@@ -28,12 +28,12 @@ def create_gdf(df, Longitude, Latitude, projection):
 @app.route('/output', methods=["POST"])
 def recommendation_output():
     # Pull input
-    global length, TSC, Rob, key, v, u
+    global length, Roughness, Rob, key, v, u
 
     car = request.form.get('car')
     mug = request.form.get('mug')
     shade = request.form.get('shade')
-    tsc = request.form.get('tsc')
+    rough = request.form.get('rough')
 
     orig_xy_form = request.form.get('start_loc')
     target_xy_form = request.form.get('end_loc')
@@ -68,7 +68,7 @@ def recommendation_output():
     Collisons = {}
     Hillshades = {}
     Robs = {}
-    TSCs = {}
+    Roughnesss = {}
     lengths = {}
     for row in G_edges.itertuples():
         u = getattr(row, 'u')
@@ -77,17 +77,17 @@ def recommendation_output():
         Collison = getattr(row, 'Collison')
         Hillshade = getattr(row, 'Hillshade')
         Rob = getattr(row, 'Rob')
-        TSC = getattr(row, 'TSC')
+        Roughness = getattr(row, 'Roughness')
         length = getattr(row, 'length')
 
         Collisons[(u, v, key)] = Collison
         Hillshades[(u, v, key)] = Hillshade
         Robs[(u, v, key)] = Rob
-        TSCs[(u, v, key)] = TSC
+        Roughnesss[(u, v, key)] = Roughness
         lengths[(u, v, key)] = length
 
     # Case if empty
-    if not(orig_xy or target_xy or car or mug or tsc or shade):
+    if not(orig_xy or target_xy or car or mug or rough or shade):
         start_coords = (43.7112075, -79.4762563)
         folium_map = folium.Map(location=start_coords, tiles='CartoDB positron', zoom_start=16, width='80%')
         map_path = app.root_path + '/' + 'static/map_demo0.html'
@@ -95,16 +95,15 @@ def recommendation_output():
         return render_template('index.html',
                                my_output='map_demo0.html',
                                my_form_result="Empty")
-    
-    elif (car == 'Yes' and mug == 'Yes' and tsc == 'Yes' and shade == 'No'):
-        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
-        # Larger value is worse
+    # all weights below are aimed at scaling each of the features. Risk of mugging has a lower weight because
+    # these data are biased (weighted as half less important)
+    elif (car == 'Yes' and mug == 'Yes' and rough == 'Yes' and shade == 'No'):
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(7 * (Robs[key]))
-            temp += int(5 * (TSCs[key]))
-            temp += int(1/40 * (Collisons[key]))
+            temp += int(6 * (Robs[key]))
+            temp += int(24 * (Roughnesss[key]))
+            temp += int(13 * (Collisons[key]))
             optimized[key] = temp
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
         # Path of nodes
@@ -178,15 +177,15 @@ def recommendation_output():
                                my_textoutput_shortest = shortest_route_write,
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
-    elif (car == 'Yes' and mug == 'Yes' and tsc == 'No' and shade == 'Yes'):
+    elif (car == 'Yes' and mug == 'Yes' and rough == 'No' and shade == 'Yes'):
         # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
         # Larger value is worse
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(7 * (Robs[key]))
-            temp += int(5 * (TSCs[key]))
-            temp += int(1/40 * Hillshades[key])
+            temp += int(6 * (Robs[key]))
+            temp += int(24 * (Roughnesss[key]))
+            temp += int(13 * Hillshades[key])
             optimized[key] = temp
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
         # Path of nodes
@@ -260,14 +259,12 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
 
-    elif (car == 'Yes' and mug == 'Yes' and tsc == 'No' and shade == 'No'):
-        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
-        # Larger value is worse
+    elif (car == 'Yes' and mug == 'Yes' and rough == 'No' and shade == 'No'):
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(7 *  (Robs[key]))
-            temp += int(6 * (Collisons[key]))
+            temp += int(6 *  (Robs[key]))
+            temp += int(13 * (Collisons[key]))
             optimized[key] = temp
 
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
@@ -342,13 +339,11 @@ def recommendation_output():
                                my_textoutput_shortest = shortest_route_write,
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
-    elif (car == 'Yes' and mug == 'No' and tsc == 'No' and shade == 'No'):
-        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
-        # Larger value is worse
+    elif (car == 'Yes' and mug == 'No' and rough == 'No' and shade == 'No'):
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(6 * (Collisons[key]))
+            temp += int(13 * (Collisons[key]))
             optimized[key] = temp
 
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
@@ -423,16 +418,14 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
 
-    elif (car == 'Yes' and mug == 'Yes' and tsc == 'Yes' and shade == 'Yes'):
-        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
-        # Larger value is worse
+    elif (car == 'Yes' and mug == 'Yes' and rough == 'Yes' and shade == 'Yes'):
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(7 * (Robs[key]))
-            temp += int(5 * (TSCs[key]))
-            temp += int(6 * (Collisons[key]))
-            temp += int(1/40 * (Hillshades[key]))  # max 50300
+            temp += int(6 * (Robs[key]))
+            temp += int(24 * (Roughnesss[key]))
+            temp += int(13 * (Collisons[key]))
+            temp += int(13 * (Hillshades[key]))  # max 50300
             optimized[key] = temp
 
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
@@ -507,15 +500,13 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
 
-    elif (car == 'No' and mug == 'Yes' and tsc == 'Yes' and shade == 'Yes'):
-        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
-        # Larger value is worse
+    elif (car == 'No' and mug == 'Yes' and rough == 'Yes' and shade == 'Yes'):
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(7 * (Robs[key]))
-            temp += int(5 * (TSCs[key]))
-            temp += int(1/40 * Hillshades[key])  # max 50300
+            temp += int(6 * (Robs[key]))
+            temp += int(24 * (Roughnesss[key]))
+            temp += int(13 * Hillshades[key])  # max 50300
             optimized[key] = temp
 
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
@@ -591,14 +582,12 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
 
-    elif (car == 'No' and mug == 'No' and tsc == 'Yes' and shade == 'Yes'):
-        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
-        # Larger value is worse
+    elif (car == 'No' and mug == 'No' and rough == 'Yes' and shade == 'Yes'):
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(5 * (TSCs[key]))
-            temp += int(1/40 * Hillshades[key])  # max 50300
+            temp += int(6 * (Roughnesss[key]))
+            temp += int(13 * Hillshades[key])  # max 50300
             optimized[key] = temp
 
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
@@ -673,13 +662,11 @@ def recommendation_output():
                                my_textoutput_shortest = shortest_route_write,
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
-    elif (car == 'No' and mug == 'No' and tsc == 'No' and shade == 'Yes'):
-        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
-        # Larger value is worse
+    elif (car == 'No' and mug == 'No' and rough == 'No' and shade == 'Yes'):
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(1/40 * Hillshades[key])  # max 50300
+            temp += int(13 * Hillshades[key])  # max 50300
             optimized[key] = temp
 
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
@@ -754,13 +741,11 @@ def recommendation_output():
                                my_textoutput_shortest = shortest_route_write,
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
-    elif (car == 'No' and mug == 'No' and tsc == 'Yes' and shade == 'No'):
-        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
-        # Larger value is worse
+    elif (car == 'No' and mug == 'No' and rough == 'Yes' and shade == 'No'):
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(5 * (TSCs[key]))
+            temp += int(24 * (Roughnesss[key]))
             optimized[key] = temp
 
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
@@ -835,9 +820,7 @@ def recommendation_output():
                                my_textoutput_shortest = shortest_route_write,
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
-    elif (car == 'No' and mug == 'Yes' and tsc == 'No' and shade == 'No'):
-        # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
-        # Larger value is worse
+    elif (car == 'No' and mug == 'Yes' and rough == 'No' and shade == 'No'):
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -917,7 +900,7 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
 
-    elif (car == 'No' and mug == 'No' and tsc == 'No' and shade == 'No'):
+    elif (car == 'No' and mug == 'No' and rough == 'No' and shade == 'No'):
         # Path of nodes
         shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
         # Get the nodes along the routes path
@@ -973,15 +956,15 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
 
-    elif  (car == 'Yes' and mug == 'No' and tsc == 'Yes' and shade == 'Yes'):
+    elif  (car == 'Yes' and mug == 'No' and rough == 'Yes' and shade == 'Yes'):
         # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
         # Larger value is worse
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(5 * (TSCs[key]))
-            temp += int(6 * (Collisons[key]))
-            temp += int(1/40 * (Hillshades[key]))  # max 50300
+            temp += int(24 * (Roughnesss[key]))
+            temp += int(13 * (Collisons[key]))
+            temp += int(13 * (Hillshades[key]))  # max 50300
             optimized[key] = temp
 
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
@@ -1056,14 +1039,14 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
 
-    elif (car == 'No' and mug == 'Yes' and tsc == 'Yes' and shade == 'No'):
+    elif (car == 'No' and mug == 'Yes' and rough == 'Yes' and shade == 'No'):
         # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
         # Larger value is worse
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(7 * (Robs[key]))
-            temp += int(5 * (TSCs[key]))
+            temp += int(6 * (Robs[key]))
+            temp += int(24 * (Roughnesss[key]))
             optimized[key] = temp
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
         # Path of nodes
@@ -1137,15 +1120,15 @@ def recommendation_output():
                                my_textoutput_shortest = shortest_route_write,
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
-    elif (car == 'Yes' and mug == 'Yes' and tsc == 'No' and shade == 'Yes'):
+    elif (car == 'Yes' and mug == 'Yes' and rough == 'No' and shade == 'Yes'):
         # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
         # Larger value is worse
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
-            temp += int(7 * (Robs[key]))
-            temp += int(5 * (TSCs[key]))
-            temp += int(1/40 * Hillshades[key])
+            temp += int(6 * (Robs[key]))
+            temp += int(24 * (Roughnesss[key]))
+            temp += int(13 * Hillshades[key])
             optimized[key] = temp
         networkx.set_edge_attributes(G_walk, optimized, 'optimized')
         # Path of nodes
@@ -1218,6 +1201,85 @@ def recommendation_output():
                                my_textoutput_shortest = shortest_route_write,
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
+    elif (car == 'No' and mug == 'Yes' and rough == 'No' and shade == 'Yes'):
+        optimized = {}
+        for key in lengths.keys():
+            temp = int(lengths[key])
+            temp += int(6 * (Robs[key]))
+            temp += int(13 * (Hillshades[key]))
+            optimized[key] = temp
+        networkx.set_edge_attributes(G_walk, optimized, 'optimized')
+        # Path of nodes
+        optimized_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='optimized')
+        # Path of nodes
+        shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
+
+        # Get the nodes along the routes path
+        shortest_route_nodes = G_nodes.loc[shortest_route]
+        optimized_route_nodes = G_nodes.loc[optimized_route]
+        # need coordinates to center map on
+        # converting to linestring in UTM to measure distance of routes
+        shortest_route_nodes_utm = create_gdf(df=shortest_route_nodes,
+                                              Latitude="y",
+                                              Longitude="x",
+                                              projection="EPSG:4326").to_crs(epsg=2958)
+
+        shortest_route_nodes_utm = LineString(list(shortest_route_nodes_utm.geometry.values))
+
+        optimized_route_nodes_utm = create_gdf(df=optimized_route_nodes,
+                                               Latitude="y",
+                                               Longitude="x",
+                                               projection="EPSG:4326").to_crs(epsg=2958)
+
+        optimized_route_nodes_utm = LineString(list(optimized_route_nodes_utm.geometry.values))
+        # people take, on average 60 minutes to cover 5 km, so it takes 12 minutes per km
+        # will use this to measure waking time
+        # distance is in meters, converting to km to 2 decimal places
+        shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
+        shortest_route_time = int(shortest_route_distance * 12)
+
+        optimized_route_distance = float("{:.1f}".format(optimized_route_nodes_utm.length / 1000))
+        optimized_route_time = int(optimized_route_distance * 12)
+
+        shortest_route_write = ('The shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
+                                'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
+        optimized_route_write = ('This optimized route is ' + str(optimized_route_distance) + ' kilometres long ' +
+                                 'and will take approximately ' + str(optimized_route_time) + ' minutes to complete.')
+
+        # need coordinates to center map on
+        ave_lat = sum(start_stop["y"]) / len(start_stop["y"])
+        ave_lon = sum(start_stop["x"]) / len(start_stop["x"])
+
+        start_stop = start_stop.to_crs(epsg=4326)
+
+        shortest_route_nodes_projection = zip(shortest_route_nodes['y'],
+                                              shortest_route_nodes['x'])
+
+        optimized_route_nodes_projection = zip(optimized_route_nodes['y'],
+                                               optimized_route_nodes['x'])
+
+        ########################################################
+        # Load map centred on average coordinates
+        my_map = folium.Map(location=[ave_lat, ave_lon], tiles='CartoDB positron', zoom_start=13)
+
+        # add a markers
+        folium.Marker([start_stop['y'][0], start_stop['x'][0]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        folium.Marker([start_stop['y'][1], start_stop['x'][1]],
+                      icon=folium.Icon(color='blue')).add_to(my_map)
+        # add lines
+        folium.PolyLine(shortest_route_nodes_projection, color="grey", weight=2.5, opacity=1).add_to(my_map)
+        # add lines
+        folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
+
+        # Save map
+        map_path = app.root_path + '/' + 'static/map_demo16.html'
+        my_map.save(map_path)
+        return render_template('index.html',
+                               my_output='map_demo16.html',
+                               my_textoutput_shortest = shortest_route_write,
+                               my_textoutput_optimized = optimized_route_write,
+                               my_form_result="NotEmpty")
 
     else:
         # Path of nodes
@@ -1271,15 +1333,8 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
 
-@app.route('/')
-def get_map_base() -> str:
-    start_coords = (43.7112075, -79.4762563)
-    folium_map = folium.Map(location=start_coords, tiles='CartoDB positron', zoom_start=16, width='80%')
-    map_path = app.root_path + '/' + 'static/map_demo0.html'
-    folium_map.save(map_path)
-    # render the index.html
-    return render_template('index.html')
+app.run(host='0.0.0.0', debug=True)
 
+#if __name__ == "__main__":
+#	app.run(debug=True) #will run locally http://127.0.0.1:5000/
 
-if __name__ == "__main__":
-    app.run(debug=True)
