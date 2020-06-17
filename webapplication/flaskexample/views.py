@@ -14,11 +14,32 @@ G_edges = pandas.read_pickle(app.root_path + '/' + 'data/edges.pkl')
 with open(app.root_path + '/' + 'data/path.p', 'rb') as f:
     G_walk = pickle.load(f)
 
+# Calculate new edge weights
+Collisons = {}
+Hillshades = {}
+Robs = {}
+Roughnesss = {}
+lengths = {}
+for row in G_edges.itertuples():
+    u = getattr(row, 'u')
+    v = getattr(row, 'v')
+    key = getattr(row, 'key')
+    Collison = getattr(row, 'Collison')
+    Hillshade = getattr(row, 'Hillshade')
+    Rob = getattr(row, 'Rob')
+    Roughness = getattr(row, 'Roughness')
+    length = getattr(row, 'length')
+
+    Collisons[(u, v, key)] = Collison
+    Hillshades[(u, v, key)] = Hillshade
+    Robs[(u, v, key)] = Rob
+    Roughnesss[(u, v, key)] = Roughness
+    lengths[(u, v, key)] = length
+
 # function to create geopandas dataframe
 def create_gdf(df, Longitude, Latitude, projection):
     return geopandas.GeoDataFrame(df, geometry=geopandas.points_from_xy(df[Longitude], df[Latitude]),
                                   crs=projection)
-
 
 @app.route('/')
 
@@ -30,29 +51,6 @@ def home_page():
 @app.route('/output', methods=["POST"])
 def recommendation_output():
     global length, Roughness, Rob, key, v, u
-
-    # Calculate new edge weights
-    Collisons = {}
-    Hillshades = {}
-    Robs = {}
-    Roughnesss = {}
-    lengths = {}
-    for row in G_edges.itertuples():
-        u = getattr(row, 'u')
-        v = getattr(row, 'v')
-        key = getattr(row, 'key')
-        Collison = getattr(row, 'Collison')
-        Hillshade = getattr(row, 'Hillshade')
-        Rob = getattr(row, 'Rob')
-        Roughness = getattr(row, 'Roughness')
-        length = getattr(row, 'length')
-
-        Collisons[(u, v, key)] = Collison
-        Hillshades[(u, v, key)] = Hillshade
-        Robs[(u, v, key)] = Rob
-        Roughnesss[(u, v, key)] = Roughness
-        lengths[(u, v, key)] = length
-
     # Pull input
     car = request.form.get('car')
     mug = request.form.get('mug')
@@ -63,39 +61,53 @@ def recommendation_output():
     target_xy_form = request.form.get('end_loc')
     orig_xy_geo = "%s, Toronto, Canada" % orig_xy_form
     target_xy_geo = "%s, Toronto, Canada" % target_xy_form
-    orig_xy = osmnx.geocode(orig_xy_geo)
-    target_xy = osmnx.geocode(target_xy_geo)
-    # need location UTMs to find nodes
-    # need in location UTMs to find nodes
-    start_stop = pandas.DataFrame([orig_xy, target_xy],
-                                  columns=['y', 'x'])
-    start_stop = create_gdf(df=start_stop,
-                            Latitude="y",
-                            Longitude="x",
-                            projection="EPSG:4326").to_crs(epsg=2958)
-
-    # extracting in UTMs
-    orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
-    target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
-
-    # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
-    orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
-    # Find the node in the graph that is closest to the target point (here, we want to get the node id)
-    target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
-    ##################################################################################################
-
-    # Case if empty
-    if not(orig_xy or target_xy or car or mug or rough or shade):
+    try:
+        orig_xy = osmnx.geocode(orig_xy_geo)
+    except:
+        orig_xy = " "
+    try:
+        target_xy = osmnx.geocode(target_xy_geo)
+    except:
+        target_xy = " "
+    if (orig_xy == " " or target_xy == " "):
         start_coords = (43.7112075, -79.4762563)
-        folium_map = folium.Map(location=start_coords, tiles='CartoDB positron', zoom_start=16, width='80%')
-        map_path = app.root_path + '/' + 'static/map_demo0.html'
+        folium_map = folium.Map(location=start_coords, tiles='CartoDB positron', zoom_start=14)
+        map_path = app.root_path + '/' + 'static/map_demo34.html'
         folium_map.save(map_path)
         return render_template('index.html',
-                               my_output='map_demo0.html',
+                               my_output='map_demo34.html',
+                               my_form_result="Empty")
+    # Case if form is empty
+    elif (orig_xy == " " or target_xy == " " or car == " " or mug == " " or rough == " " or shade == " "):
+        start_coords = (43.7112075, -79.4762563)
+        folium_map = folium.Map(location=start_coords, tiles='CartoDB positron', zoom_start=14)
+        map_path = app.root_path + '/' + 'static/map_demo36.html'
+        folium_map.save(map_path)
+        return render_template('index.html',
+                               my_output='map_demo36.html',
                                my_form_result="Empty")
     # all weights below are aimed at scaling each of the features. Risk of mugging has a lower weight because
     # these data are biased (weighted as half less important)
     elif (car == 'Yes' and mug == 'Yes' and rough == 'Yes' and shade == 'No'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -176,6 +188,25 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
     elif (car == 'Yes' and mug == 'Yes' and rough == 'No' and shade == 'Yes'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
         # Larger value is worse
         optimized = {}
@@ -258,6 +289,25 @@ def recommendation_output():
                                my_form_result="NotEmpty")
 
     elif (car == 'Yes' and mug == 'Yes' and rough == 'No' and shade == 'No'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -338,6 +388,25 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
     elif (car == 'Yes' and mug == 'No' and rough == 'No' and shade == 'No'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -417,6 +486,25 @@ def recommendation_output():
                                my_form_result="NotEmpty")
 
     elif (car == 'Yes' and mug == 'Yes' and rough == 'Yes' and shade == 'Yes'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -499,6 +587,25 @@ def recommendation_output():
                                my_form_result="NotEmpty")
 
     elif (car == 'No' and mug == 'Yes' and rough == 'Yes' and shade == 'Yes'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -581,6 +688,25 @@ def recommendation_output():
                                my_form_result="NotEmpty")
 
     elif (car == 'No' and mug == 'No' and rough == 'Yes' and shade == 'Yes'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -661,6 +787,25 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
     elif (car == 'No' and mug == 'No' and rough == 'No' and shade == 'Yes'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -740,6 +885,25 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
     elif (car == 'No' and mug == 'No' and rough == 'Yes' and shade == 'No'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -819,6 +983,25 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
     elif (car == 'No' and mug == 'Yes' and rough == 'No' and shade == 'No'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -899,6 +1082,25 @@ def recommendation_output():
                                my_form_result="NotEmpty")
 
     elif (car == 'No' and mug == 'No' and rough == 'No' and shade == 'No'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         # Path of nodes
         shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
         # Get the nodes along the routes path
@@ -919,7 +1121,7 @@ def recommendation_output():
         shortest_route_distance = float("{:.1f}".format(shortest_route_nodes_utm.length / 1000))
         shortest_route_time = int(shortest_route_distance * 12)
 
-        shortest_route_write = ('This optimized route is ' + str(shortest_route_distance) + ' kilometres long ' +
+        shortest_route_write = ('This shortest route is ' + str(shortest_route_distance) + ' kilometres long ' +
                                  'and will take approximately ' + str(shortest_route_time) + ' minutes to complete.')
         optimized_route_write = 'You did not select any preferences - no optimized route is provided'
 
@@ -955,6 +1157,25 @@ def recommendation_output():
                                my_form_result="NotEmpty")
 
     elif  (car == 'Yes' and mug == 'No' and rough == 'Yes' and shade == 'Yes'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
         # Larger value is worse
         optimized = {}
@@ -1038,6 +1259,25 @@ def recommendation_output():
                                my_form_result="NotEmpty")
 
     elif (car == 'No' and mug == 'Yes' and rough == 'Yes' and shade == 'No'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
         # Larger value is worse
         optimized = {}
@@ -1119,6 +1359,25 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
     elif (car == 'Yes' and mug == 'Yes' and rough == 'No' and shade == 'Yes'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         # Optimized attribute is a weighted combo of path length, risk of being mugged/hit by a car, shadiness and hilliness.
         # Larger value is worse
         optimized = {}
@@ -1200,6 +1459,25 @@ def recommendation_output():
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")
     elif (car == 'No' and mug == 'Yes' and rough == 'No' and shade == 'Yes'):
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         optimized = {}
         for key in lengths.keys():
             temp = int(lengths[key])
@@ -1280,6 +1558,25 @@ def recommendation_output():
                                my_form_result="NotEmpty")
 
     else:
+        # need location UTMs to find nodes
+        # need in location UTMs to find nodes
+        start_stop = pandas.DataFrame([orig_xy, target_xy],
+                                      columns=['y', 'x'])
+        start_stop = create_gdf(df=start_stop,
+                                Latitude="y",
+                                Longitude="x",
+                                projection="EPSG:4326").to_crs(epsg=2958)
+
+        # extracting in UTMs
+        orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
+        target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
+
+        # Find the node in the graph that is closest to the origin point (here, we want to get the node id)
+        orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
+        # Find the node in the graph that is closest to the target point (here, we want to get the node id)
+        target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
+        ##################################################################################################
+
         # Path of nodes
         shortest_route = networkx.shortest_path(G_walk, orig_node, target_node, weight='length')
         # Get the nodes along the routes path

@@ -90,6 +90,44 @@ def create_gdf(df, Longitude, Latitude, projection):
 orig_xy = osmnx.utils_geo.geocode("CN Tower, Toronto, Canada")
 target_xy = osmnx.utils_geo.geocode("Casa Loma, Toronto, Canada")
 
+try:
+    osmnx.utils_geo.geocode("Kitchener City Hall, Toronto, Canada")
+except AssertionError as error:
+    print(error)
+    print('function was not executed')
+
+try:
+    osmnx.utils_geo.geocode("CN Tower, Toronto, Canada")
+except:
+    pass
+
+try:
+    orig_xy = osmnx.geocode("Kitchener City Hall, Toronto, Canada")
+except:
+    orig_xy = " "
+
+if not osmnx.utils_geo.geocode("Kitchener City Hall, Toronto, Canada"):
+    return
+
+
+
+orig_xy_form = ('Kitchener City Hall')
+target_xy_form = ('Casa Loma')
+orig_xy_geo = "%s, Toronto, Canada" % orig_xy_form
+target_xy_geo = "%s, Toronto, Canada" % target_xy_form
+try:
+    orig_xy = osmnx.geocode(orig_xy_geo)
+except:
+    orig_xy = ''
+try:
+    target_xy = osmnx.geocode(target_xy_geo)
+except:
+    target_xy = ''
+
+if  (orig_xy or target_xy):
+        start_coords = (43.7112075, -79.4762563)
+        print(start_coords)
+
 # need in location UTMs to find nodes
 start_stop = pandas.DataFrame([orig_xy, target_xy],
                               columns=['y', 'x'])

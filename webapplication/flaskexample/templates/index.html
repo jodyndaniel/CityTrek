@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 
-         <img src="/static/header-picture.jpg" height="400" width="1600"/>
-  <title>City Trek - Plan With Us</title>
+         <img src="/static/header-picture.jpg" class='img-fluid w-100'/>
+  <title>CityTrek - Walk With Comfort & Safety</title>
   <!-- Bootstrap core CSS -->
   <link href="static/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
 
@@ -18,7 +18,7 @@
       <div class="row">
         <div class="col-lg-8 mx-auto">
           <h2>CityTrek</h2>
-          <p class="lead">We recommend the shortest path that meets your comfort and safety concerns. Fill in your start and end locations, preferences, and then hit go!</p>
+          <p class="lead">We recommend the shortest path that meets your comfort and safety concerns in the <strong>City of Toronto</strong>. Fill in your <strong>start</strong> and <strong>end</strong>  locations, <strong>preferences</strong>, and then hit <strong>go</strong>! Since this is the beta version of the application, you will need to input locations as named on google maps (e.g., CF Toronto Eaton Centre).</p>
           <ul>
               <div class="col-sm m-3 text-left">
                 	<form action="/output" method="POST">
@@ -53,9 +53,13 @@
               </div>
 
   	{% if my_form_result=='Empty' %}
-  	<div class="row mt-4 justify-content-center">
-        	<h4 class="text-danger text-center">You did not tell us your start and end location, so returning an empty map!</h4><br>
+  	<div class="container">
+      <div class="row">
+        <div class="col-lg-8 mx-auto">
+        <p class="lead" style="color:#FF0000";>You did not tell us your start and or end location, did not fill out your preferences, or the locations you've entered were not found in the City of Toronto. Consequently, we've returned an empty map! Try again? </p>
     </div>
+          </div>
+        </div>
       <div class="row mt-4 justify-content-center">
         <p align="center"><iframe class="map", src="{{ url_for('static', filename=my_output) }}" width="800" height="600"></iframe></p>
   	</div>
@@ -66,9 +70,12 @@
         	<div class="col-lg-8 mx-auto">
               <p align="center"><iframe class="map", src="{{ url_for('static', filename=my_output) }}" width="800" height="600"></iframe></p>
         	</div>
-        <div class="row mt-4 justify-content-center">
+        </div>
+        <div class="container">
+      <div class="row">
+        <div class="col-lg-8 mx-auto">
             <p class="lead">{{my_textoutput_shortest}}<br>{{my_textoutput_optimized}}</p>
-          <ul>
+          </div>
         </div>
   	</div>
 
@@ -80,7 +87,10 @@
   <!-- Footer -->
   <footer class="py-5 bg-dark">
     <div class="container">
-      <p class="m-0 text-center text-white">Copyright &copy; CityTrek 2020 <br> Header Photo &copy;  <a href="https://www.pexels.com/@andre-furtado-43594"> Andre Furtado </a> </p>
+      <p class="m-0 text-center text-white">Copyright &copy; CityTrek 2020 <br> Photography &copy;  <a href="https://www.pexels.com/@andre-furtado-43594" style="color:white"> Andre Furtado <br>
+          <a href="https://github.com/jodyndaniel/CityTrek">
+              <img alt="GitHub" src="/static/github.png" width=150" height="82.8125"> </a>
+      </p>
     </div>
     <!-- /.container -->
   </footer>
