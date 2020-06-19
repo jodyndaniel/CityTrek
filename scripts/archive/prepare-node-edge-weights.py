@@ -16,8 +16,8 @@ def create_gdf(df, Longitude, Latitude, projection):
                                   crs=projection)
 
 ##############################################################################################
-robbery_model_nodes_2958 = pandas.read_pickle("C:/Users/jodyn/Google Drive/Insight/Processed Data/robbery_model_nodes_2958.pkl")
-pedestrian_model_nodes_2958 = pandas.read_pickle("C:/Users/jodyn/Google Drive/Insight/Processed Data/pedestrian_model_nodes_2958.pkl")
+robbery_model_nodes_2958 = pandas.read_pickle("C:/Users/jodyn/Google Drive/Insight Data Science/Insight/Processed Data/robbery_model_nodes_2958.pkl")
+pedestrian_model_nodes_2958 = pandas.read_pickle("C:/Users/jodyn/Google Drive/Insight Data Science/Insight/Processed Data/pedestrian_model_nodes_2958.pkl")
 ##################################################################################################
 ##################################################################################################
 place_name = 'City of Toronto'
@@ -64,23 +64,23 @@ interpolated_collision = idw_collision(coords_walk_nodes,n_neighbors=19,power=1.
 ###################################################################################################
 # add elevation to each of the nodes, using the google elevation API, then calculate edge grades
 # will extract values of hillshade and TRI at each node in GIS
-filepath_Roughness = r"C:/Users/jodyn/Google Drive/Insight/Terrain/DTM_Roughness_2958.tif"
-filepath_Hillshade = r"C:/Users/jodyn/Google Drive/Insight/Terrain/DTM_Hillshade_2958.tif"
+filepath_Roughness = r"C:/Users/jodyn/Google Drive/Insight Data Science/Insight/Terrain/DTM_Roughness_2958.tif"
+filepath_Hillshade = r"C:/Users/jodyn/Google Drive/Insight Data Science/Insight/Terrain/DTM_Hillshade_2958.tif"
 raster_Roughness = gdal.Open(filepath_Roughness)
 raster_Hillshade = gdal.Open(filepath_Hillshade)
 
-walk_nodes_gdf['Roughness'] = int(rasterstats.point_query(walk_nodes_gdf, filepath_Roughness,
-                                                interpolate='nearest'))
-walk_nodes_gdf['Hillshade'] = int(rasterstats.point_query(walk_nodes_gdf, filepath_Hillshade,
-                                                      interpolate='nearest'))
+walk_nodes_gdf['Roughness'] = rasterstats.point_query(walk_nodes_gdf, filepath_Roughness,
+                                                interpolate='nearest')
+walk_nodes_gdf['Hillshade'] = rasterstats.point_query(walk_nodes_gdf, filepath_Hillshade,
+                                                      interpolate='nearest')
 
 walk_nodes_gdf['Roughness'] = walk_nodes_gdf['Roughness'].fillna(0)
 walk_nodes_gdf['Hillshade'] = walk_nodes_gdf['Hillshade'].fillna(0)
 
 ################################################################################################
 ################################################################################################
-walk_nodes_gdf['Collison'] = list(interpolated_collision)
-walk_nodes_gdf['Mugging'] = list(interpolated_mugging)
+walk_nodes_gdf['Collison'] = interpolated_collision.astype(float)
+walk_nodes_gdf['Mugging'] = interpolated_mugging.astype(float)
 ################################################################################################
 ################################################################################################
 # find the edge weights based on these model values
@@ -122,9 +122,9 @@ networkx.set_edge_attributes(walk_path_GTA_proj, Hillshades, 'Hillshade')
 networkx.set_edge_attributes(walk_path_GTA_proj, Roughnesss, 'Roughness')
 
 ##################################################################################################
-walk_edges_proj.to_pickle("application/data/edges.pkl")
-walk_nodes_proj.to_pickle("application/data/nodes.pkl")
-with open("application/data/path.p", 'wb') as f:
+walk_edges_proj.to_pickle("webapplication/flaskexample/data/edges.pkl")
+walk_nodes_proj.to_pickle("webapplication/flaskexample/data/nodes.pkl")
+with open("webapplication/flaskexample/data/path.p", 'wb') as f:
     pickle.dump(walk_path_GTA_proj,f)
 
 ######################################################################################################
