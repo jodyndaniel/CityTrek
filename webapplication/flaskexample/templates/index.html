@@ -18,35 +18,34 @@
       <div class="row">
         <div class="col-lg-8 mx-auto">
           <h2>CityTrek</h2>
-          <p class="lead">We recommend the shortest path that meets your comfort and safety concerns in the <strong>City of Toronto</strong>. Fill in your <strong>start</strong> and <strong>end</strong>  locations, <strong>preferences</strong>, and then hit <strong>go</strong>! Since this is the beta version of the application, you will need to input locations as named on google maps (e.g., CF Toronto Eaton Centre).</p>
+          <p class="lead">We recommend the shortest path that meets your comfort and safety concerns in the <strong>City of Toronto</strong>. Fill in your <strong>start</strong> and <strong>end</strong>  locations, <strong>use the sliders to select your preferences</strong>, and then hit <strong>go</strong>! Also, the slider values range from 0 (far left) to 10 (far right). Since this is the beta version of the application, you will need to input locations as named on google maps (e.g., CF Toronto Eaton Centre).</p>
           <ul>
               <div class="col-sm m-3 text-left">
                 	<form action="/output" method="POST">
-                        <label for="start_loc">Route Start:</label>
-                      	<input input class="form-control" type="text" id="start_loc" name='start_loc' placeholder="e.g. CN Tower">
-                        <label for="end_loc">Route End:</label>
-                      	<input input class="form-control" type="text" id="end_loc" name='end_loc' placeholder="e.g. Casa Loma"><b></b>
-                        <label for="mug">Should your route avoid areas where you are more likely to be mugged?</label>
-                        <select class="form-control" id="mug" name="mug" size="2">
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option></select><br>
-                        <label for="car">Is being hit by oncoming traffic something you are concerned about on your walk?</label>
-                        <select class="form-control" id="car" name="car" size="2">
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option></select>
-                        <label for="shade">Would you prefer a shady path?</label>
-                        <select class="form-control"id="shade" name="shade" size="2">
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>/<select>
-                        <label for="rough">Do you care if the terrain is flat?</label>
-                        <select class="form-control" id="rough" name="rough" size="2">
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>/<select>
+                        <label for="start_loc">Route Start</label>
+                        <input input class="form-control" type="text" id="start_loc" name='start_loc' placeholder="e.g. CN Tower">
+                        <label for="end_loc">Route End</label>
+                        <input input class="form-control" type="text" id="end_loc" name='end_loc' placeholder="e.g. Casa Loma"><b></b>
+                        <div class="d-flex justify-content-center my-4">
+                            <div class="w-75">
+                                <label for="mug">Should your route avoid areas where you are more likely to be mugged?</label><br>
+                                <input type="range" class="custom-range"name="mug" id="mug" value="5" min="0" max="10" />
+                                <label for="car">Is being hit by oncoming traffic something you are concerned about on your walk?</label><br>
+                                <input type="range" class="custom-range" name="car" id="car" value="5" min="0" max="10">
+                                <label for="shade">Would you prefer a shady path?</label><br>
+                                <input type="range" class="custom-range"name="shade" id="shade" value="5" min="0" max="10"><br>
+                                <label for="rough"> Would you prefer a flatter path?</label><br>
+                                <input type="range" class="custom-range"name="rough" id="rough" value="5" min="0" max="10"><br>
+                                <span class="font-weight-bold text-secondary ml-2 valueSpan2"></span>
+                                <label for="dist">How important is path length to you?</label><br>
+                                <input type="range" class="custom-range"name="dist" id="dist" value="5" min="0" max="10"><br>
+                            </div><span class="font-weight-bold text-secondary ml-2 valueSpan2"></span>
+                            </div>
                         <div class="row justify-content-center">
                             <button type="submit" class="btn btn-secondary btn-lg">Go!</button>
                         </div>
                     </form>
-              </div>
+                  </div>
           </ul>
         </div>
       </div>
