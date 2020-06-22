@@ -1,7 +1,6 @@
-# Insight Data Science Fellowship
+# CityTrek
 
-This repository is for the web application **CityTrek**.
- Imagine you had an unexpected layover in Toronto,
+Imagine you had an unexpected layover in Toronto,
  you would like to **walk**  from the Casa Loma to the CN tower,
  but you have no idea whether the path your navigation 
  application has recommended is comfortable or safe. 
@@ -18,7 +17,7 @@ This repository is for the web application **CityTrek**.
  
  Because we understand that crime data (e.g., mugging) is highly
  biased, which could result in paths that avoid marginalized 
- neighbourhoods, **CityTrek**  places a much 
+ neighbourhoods, **CityTrek** places a much 
  lower weight on this feature compared to the others. Simply,
  marginalized communities are often over-policed, which 
  leads to [higher incidences of reported of crimes](https://www.jstor.org/stable/41954178?seq=1).

@@ -83,7 +83,8 @@ walk_nodes_gdf['Collison'] = interpolated_collision.astype(float)
 walk_nodes_gdf['Mugging'] = interpolated_mugging.astype(float)
 ################################################################################################
 ################################################################################################
-# find the edge weights based on these model values
+# I now need to convert these node values to edge values/weights, which is the basis of the
+# shortest path alogrithim
 walk_edges_proj['Rob'] = [int(100 * (walk_nodes_gdf.loc[u]['Mugging'] + walk_nodes_gdf.loc[v]['Mugging']))
                        for u, v in zip(walk_edges_proj['u'], walk_edges_proj['v'])]
 walk_edges_proj['Collison'] = [int(100 * (walk_nodes_gdf.loc[u]['Collison'] + walk_nodes_gdf.loc[v]['Collison']))
@@ -94,13 +95,13 @@ walk_edges_proj['Roughness'] = [int(10 * (walk_nodes_gdf.loc[u]['Roughness'] + w
                        for u, v in zip(walk_edges_proj['u'], walk_edges_proj['v'])]
 #####################################################################################################
 #####################################################################################################
-
+# now that we have edge values, we now need to add these values to the the road network
 Robs = {}
 Collisons = {}
 Hillshades = {}
 Roughnesss = {}
 
-# Set each edge's tree weight as the average of the tree weights of the edge's vertices
+# Set each edge's  weight as the average of the tree weights of the edge's vertices
 for row in walk_edges_proj.itertuples():
     u = getattr(row, 'u')
     v = getattr(row, 'v')
@@ -115,7 +116,7 @@ for row in walk_edges_proj.itertuples():
     Hillshades[(u, v, key)] = Hillshade
     Roughnesss[(u, v, key)] = Roughness
 
-# need to set the edge attributes
+# now, I can add these weights (from the edges) to the road network
 networkx.set_edge_attributes(walk_path_GTA_proj, Robs, 'Rob')
 networkx.set_edge_attributes(walk_path_GTA_proj, Collisons, 'Collison')
 networkx.set_edge_attributes(walk_path_GTA_proj, Hillshades, 'Hillshade')
@@ -128,63 +129,3 @@ with open("webapplication/flaskexample/data/path.p", 'wb') as f:
     pickle.dump(walk_path_GTA_proj,f)
 
 ######################################################################################################
-
-orig_xy = osmnx.utils_geo.geocode("CN Tower, Toronto, Canada")
-target_xy = osmnx.utils_geo.geocode("Casa Loma, Toronto, Canada")
-
-# need in location UTMs to find nodes
-start_stop = pandas.DataFrame([orig_xy, target_xy],
-                              columns=['y', 'x'])
-start_stop = create_gdf(df=start_stop,
-                        Latitude="y",
-                        Longitude="x",
-                        projection="EPSG:4326").to_crs(epsg=2958)
-
-# extracting in UTMs
-orig_xy = (start_stop.geometry.y[0], start_stop.geometry.x[0])
-target_xy = (start_stop.geometry.y[1], start_stop.geometry.x[1])
-
-G_edges = walk_edges_proj
-G_nodes = walk_nodes_proj
-G_walk = walk_path_GTA_proj
-
-# Find the node in the graph that is closest to the origin point (here, we want to get the node id)
-orig_node = osmnx.get_nearest_node(G_walk, orig_xy, method='euclidean')
-# Find the node in the graph that is closest to the target point (here, we want to get the node id)
-target_node = osmnx.get_nearest_node(G_walk, target_xy, method='euclidean')
-##################################################################################################
-# Calculate new edge weights
-Collisons = {}
-Hillshades = {}
-Robs = {}
-Roughnesss = {}
-lengths = {}
-for row in G_edges.itertuples():
-    u = getattr(row, 'u')
-    v = getattr(row, 'v')
-    key = getattr(row, 'key')
-    Collison = getattr(row, 'Collison')
-    Hillshade = getattr(row, 'Hillshade')
-    Rob = getattr(row, 'Rob')
-    Roughness = getattr(row, 'Roughness')
-    length = getattr(row, 'length')
-
-    Collisons[(u, v, key)] = Collison
-    Hillshades[(u, v, key)] = Hillshade
-    Robs[(u, v, key)] = Rob
-    Roughnesss[(u, v, key)] = Roughness
-    lengths[(u, v, key)] = length
-
-# Optimized attribute is a weighted combo of normal length, tree counts, and road safety.
-# Larger value is worse
-
-optimized = {}
-for key in lengths.keys():
-    temp = (lengths[key]) # 2450
-    temp += (6 * (Robs[key])) # 186
-    temp += (24 * (Roughnesss[key])) # 101
-    temp += (13 * (Collisons[key])) # 196
-    temp += (13 * (Hillshades[key]))# 199
-    optimized[key] = temp
-
-

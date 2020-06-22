@@ -14,7 +14,8 @@ G_edges = pandas.read_pickle(app.root_path + '/' + 'data/edges.pkl')
 with open(app.root_path + '/' + 'data/path.p', 'rb') as f:
     G_walk = pickle.load(f)
 
-# Calculate new edge weights
+# need to call the edge weights to that I can apply the optimized weights
+# for the later shortest path measures in the applicaton
 Collisons = {}
 Hillshades = {}
 Robs = {}
@@ -43,7 +44,6 @@ def create_gdf(df, Longitude, Latitude, projection):
 
 @app.route('/', methods=["GET", "POST"])  # we are now using these methods to get user input
 def home_page():
-
     return render_template('index.html')  # render a template
 
 @app.route('/output', methods=["POST"])
@@ -68,13 +68,39 @@ def recommendation_output():
         target_xy = osmnx.geocode(target_xy_geo)
     except:
         target_xy = " "
-    if (orig_xy == " " or target_xy == " "):
+
+    if (orig_xy == target_xy):
         start_coords = (43.7112075, -79.4762563)
         folium_map = folium.Map(location=start_coords, tiles='CartoDB positron', zoom_start=14)
         map_path = app.root_path + '/' + 'static/map_demo_0.html'
         folium_map.save(map_path)
+        text_output = ('It seems that you entered the same address as your start and end location.'
+                       ' Consequently, we have returned an empty map! Try again?')
         return render_template('index.html',
                                my_output='map_demo_0.html',
+                               my_text_null= text_output,
+                               my_form_result="Empty")
+    elif (orig_xy==" " or target_xy ==" "):
+        start_coords = (43.7112075, -79.4762563)
+        folium_map = folium.Map(location=start_coords, tiles='CartoDB positron', zoom_start=14)
+        map_path = app.root_path + '/' + 'static/map_demo_1.html'
+        folium_map.save(map_path)
+        text_output = ('One or both of locations you entered were not found in the City of Toronto. Consequently, we '
+                       'returned an empty map! Try again?')
+        return render_template('index.html',
+                               my_output='map_demo_1.html',
+                               my_text_null=text_output,
+                               my_form_result="Empty")
+    elif (orig_xy_geo==(43.6534817, -79.3839347) or target_xy==(43.6534817, -79.3839347)):
+        start_coords = (43.7112075, -79.4762563)
+        folium_map = folium.Map(location=start_coords, tiles='CartoDB positron', zoom_start=14)
+        map_path = app.root_path + '/' + 'static/map_demo_2.html'
+        folium_map.save(map_path)
+        text_output = ('You did not enter a start or end location.'
+                       ' Consequently, we returned an empty map! Try again?')
+        return render_template('index.html',
+                               my_output='map_demo_2.html',
+                               my_text_null=text_output,
                                my_form_result="Empty")
     # all weights below are aimed at scaling each of the features. Risk of mugging has a lower weight because
     # these data are biased (weighted as half less important)
@@ -172,10 +198,10 @@ def recommendation_output():
         # add lines
         folium.PolyLine(optimized_route_nodes_projection, color="green", weight=3, opacity=1).add_to(my_map)
         # Save map
-        map_path = app.root_path + '/' + 'static/map_demo_1.html'
+        map_path = app.root_path + '/' + 'static/map_demo_3.html'
         my_map.save(map_path)
         return render_template('index.html',
-                               my_output='map_demo_1.html',
+                               my_output='map_demo_3.html',
                                my_textoutput_shortest = shortest_route_write,
                                my_textoutput_optimized = optimized_route_write,
                                my_form_result="NotEmpty")

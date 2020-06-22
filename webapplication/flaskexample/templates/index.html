@@ -18,27 +18,32 @@
       <div class="row">
         <div class="col-lg-8 mx-auto">
           <h2>CityTrek</h2>
-          <p class="lead">We recommend the shortest path that meets your comfort and safety concerns in the <strong>City of Toronto</strong>. Fill in your <strong>start</strong> and <strong>end</strong>  locations, <strong>use the sliders to select your preferences</strong>, and then hit <strong>go</strong>! Also, the slider values range from 0 (far left) to 10 (far right). Since this is the beta version of the application, you will need to input locations as named on google maps (e.g., CF Toronto Eaton Centre).</p>
+          <p class="lead">We recommend the shortest path that meets your comfort and safety concerns in the <strong>City of Toronto</strong>.
+              Fill in your <strong>start</strong> and <strong>end</strong>  locations, <strong>use the sliders to select
+                  your preferences</strong>, and then hit <strong>go</strong>!
+              The slider values range from low priority (far left) to high priority (far right).
+              Since this is the beta version of the application, you will need to input locations as
+              named on google maps (e.g., CF Toronto Eaton Centre).</p>
           <ul>
               <div class="col-sm m-3 text-left">
                 	<form action="/output" method="POST">
-                        <label for="start_loc">Route Start</label>
-                        <input input class="form-control" type="text" id="start_loc" name='start_loc' placeholder="e.g. CN Tower">
-                        <label for="end_loc">Route End</label>
-                        <input input class="form-control" type="text" id="end_loc" name='end_loc' placeholder="e.g. Casa Loma"><b></b>
+                        <p class="lead" label for="start_loc">Route Start</label></p>
+                        <input input class="form-control" type="text" id="start_loc" name='start_loc' placeholder="e.g. CN Tower"></br>
+                        <p class="lead" label for="end_loc">Route End</label></p>
+                        <input input class="form-control" type="text" id="end_loc" name='end_loc' placeholder="e.g. Casa Loma">
                         <div class="d-flex justify-content-center my-4">
-                            <div class="w-75">
-                                <label for="mug">Should your route avoid areas where you are more likely to be mugged?</label><br>
-                                <input type="range" class="custom-range"name="mug" id="mug" value="5" min="0" max="10" />
-                                <label for="car">Is being hit by oncoming traffic something you are concerned about on your walk?</label><br>
-                                <input type="range" class="custom-range" name="car" id="car" value="5" min="0" max="10">
-                                <label for="shade">Would you prefer a shady path?</label><br>
-                                <input type="range" class="custom-range"name="shade" id="shade" value="5" min="0" max="10"><br>
-                                <label for="rough"> Would you prefer a flatter path?</label><br>
-                                <input type="range" class="custom-range"name="rough" id="rough" value="5" min="0" max="10"><br>
-                                <span class="font-weight-bold text-secondary ml-2 valueSpan2"></span>
-                                <label for="dist">How important is path length to you?</label><br>
-                                <input type="range" class="custom-range"name="dist" id="dist" value="5" min="0" max="10"><br>
+                            <div class=" range-field w-75">
+                                <p class="lead" > Now, you can <b>rank</b> your <b>priorities</b> below (ranging from low to high). Should your path:</p>
+                                <p class = "lead" label for="mug"> Avoid areas where you are more likely to be <b>mugged</b>? </label></p>
+                                <input type="range" class="custom-range" name="mug" id="mug" value="5" min="1" max="10" step = "1"/>
+                                <p class = "lead" label for="car"> Avoid areas where being <b>hit by oncoming traffic</b> is of greater risk?</label></p>
+                                <input type="range" class="custom-range" name="car" id="car" value="5" min="1" max="10" step = "1">
+                                 <p class = "lead" label for="shade"> Be optimized for <b>shadiness</b>?</label><br></p>
+                                <input type="range" class="custom-range"name="shade" id="shade" value="5" min="1" max="10" step = "1">
+                                 <p class = "lead" label for="rough"> Be directed to <b>flatter</b> areas in the city?</label></p>
+                                <input type="range" class="custom-range"name="rough" id="rough" value="5" min="1" max="10" step = "1">
+                                 <p class = "lead" label for="dist"> Be the <b>shortest</b> possible distance?</label></p>
+                                <input type="range" class="custom-range"name="dist" id="dist" value="5" min="1" max="10" step = "1">
                             </div><span class="font-weight-bold text-secondary ml-2 valueSpan2"></span>
                             </div>
                         <div class="row justify-content-center">
@@ -55,7 +60,7 @@
   	<div class="container">
       <div class="row">
         <div class="col-lg-8 mx-auto">
-        <p class="lead" style="color:#FF0000";>You did not tell us your start and or end location, did not fill out your preferences, or the locations you've entered were not found in the City of Toronto. Consequently, we've returned an empty map! Try again? </p>
+        <p class="lead" style="color:#FF0000";>{{my_text_null}} </p>
     </div>
           </div>
         </div>
@@ -67,7 +72,8 @@
   	</div>
   	<div class="row p-1 m-1 justify-content-center">
         	<div class="col-lg-8 mx-auto">
-              <p align="center"><iframe class="map", src="{{ url_for('static', filename=my_output) }}" width="800" height="600"></iframe></p>
+              <p align="center"><iframe class="map", src="{{ url_for('static', filename=my_output) }}"
+                                        width="800" height="600"></iframe></p>
         	</div>
         </div>
         <div class="container">
