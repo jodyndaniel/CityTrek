@@ -5,23 +5,23 @@ Imagine you had an unexpected layover in Toronto,
  but you have no idea whether the path your navigation 
  application has recommended is comfortable or safe. 
  Want a better option?
- **CityTrek** is the application for you! 
+ [**CityTrek**](http://citytrek.live/) is the application for you! 
  
- **CityTrek** takes your comfort 
+ [**CityTrek**](http://citytrek.live/) takes your comfort 
  (e.g., preferences for shady or flatter paths)
  and safety (e.g., risk of mugging and car collision) preferences
  and recommends an optimized path compared to the shortest path.
- **CityTrek** will also provide details on 
+ [**CityTrek**](http://citytrek.live/) will also provide details on 
  how this optimized path compares to the shortest path, in terms
  of distance and walking time. 
  
  Because we understand that crime data (e.g., mugging) is highly
  biased, which could result in paths that avoid marginalized 
- neighbourhoods, **CityTrek** places a much 
+ neighbourhoods, [**CityTrek**](http://citytrek.live/) places a much 
  lower weight on this feature compared to the others. Simply,
  marginalized communities are often over-policed, which 
  leads to [higher incidences of reported of crimes](https://www.jstor.org/stable/41954178?seq=1).
-This bias in the data would result in the model predicting that
+These biases in the data would result in the model predicting that
 such neighbourhoods are unsafe, when in fact, they are simply
 over-policed.
  
@@ -56,14 +56,15 @@ raster layer, which is the degree of irregularity in a surface.
 Next, I web scraped the City of Toronto Police data and commenced cleaning, exploration
 and preparation for predictive modelling. For the robbery data, I selected events that occurred outside
 and were tagged as muggings - this is most relevant to pedestrians. For the pedestrian car collisions,
-I removed events that occurred on roads with road types with fewer than 10 observations.
+I removed events that occurred along roads types with fewer than 10 observations.
 I then needed to generate psedoabsences, which I did in ArcGIS by creating random points 
-along the entire road network of the City of Toronto. After finding measuring priority of
-each event to the nearest traffic signal, stop sign, turning loop, etc (in GIS), I then used
+along the entire road network of the City of Toronto. After measuring the proximity of
+each occurence/psedoabsence to the nearest crossings, give ways, traffic signals, turning loops and
+speed camera (in GIS), I then used
 one-hot encoding to generate some dummy variables and balanced my classes. 
 ![Proximity](notebooks/figures/Proximity-Histogram.png)
 *Figure 1. Distribution of how close mugging (top) and 
-pedestrian car collisions (bottom)occurred to crossings, give ways, traffic signals, turrinign loops and
+pedestrian car collisions (bottom)occurred to crossings, give ways, traffic signals, turning loops and
 speed cameras in the City of Toronto*
 
 #### Predicting Mugging and Pedestrian Car Collision Risk
@@ -72,8 +73,10 @@ of mugging and pedestrian car collisions. I was interested in comparing performa
 a simpler, more interpretable model (i.e., logistic regression) and a more complex, but powerful,
 model. Note, I did not consider Naive Bayes because this model assumes independence of features, which
 my data did violate (and I had a large sample size). In the end, after some model tuning, Random Forest models
-had higher accuracy. Thus, I chose this model to predict saftey metrics in the web application. 
+had higher accuracy. Thus, I chose this model to predict safety metrics in the web application. 
 ![AUC](notebooks/figures/AUC.png)
 *Figure 2. Area Under Receiver Operator Curve for Random
 Forest Models that predict the probability of mugging and pedestrian
 car collision in the City of Toronto*
+
+
