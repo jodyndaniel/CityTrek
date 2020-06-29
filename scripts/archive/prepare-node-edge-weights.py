@@ -90,7 +90,11 @@ walk_nodes_gdf['Mugging'] = interpolated_mugging.astype(float)
 ################################################################################################
 ################################################################################################
 # I now need to convert these node values to edge values/weights, which is the basis of the
-# shortest path alogrithim
+# shortest path algorithm. I want to ensure that these values have the same max values -
+# this ensures that the they are weighted the same.
+# To relativize these values, I am multiplying them by an integer that
+# would make their max values the same. I took a quick look at the min/max for each metric - and
+# I am making them the same based on the maximum length value
 walk_edges_proj['Rob'] = [int(100 * (walk_nodes_gdf.loc[u]['Mugging'] + walk_nodes_gdf.loc[v]['Mugging']))
                           for u, v in zip(walk_edges_proj['u'], walk_edges_proj['v'])]
 walk_edges_proj['Collison'] = [int(100 * (walk_nodes_gdf.loc[u]['Collison'] + walk_nodes_gdf.loc[v]['Collison']))
@@ -98,7 +102,6 @@ walk_edges_proj['Collison'] = [int(100 * (walk_nodes_gdf.loc[u]['Collison'] + wa
 walk_edges_proj['Hillshade'] = [int(0.3937 * (walk_nodes_gdf.loc[u]['Hillshade'] + walk_nodes_gdf.loc[v]['Hillshade']))
                                 for u, v in zip(walk_edges_proj['u'], walk_edges_proj['v'])]
 walk_edges_proj['Roughness'] = [int(10 * (walk_nodes_gdf.loc[u]['Roughness'] + walk_nodes_gdf.loc[v]['Roughness']))
-                                # TSC ranges were super larg
                                 for u, v in zip(walk_edges_proj['u'], walk_edges_proj['v'])]
 #####################################################################################################
 #####################################################################################################

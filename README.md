@@ -79,4 +79,30 @@ had higher accuracy. Thus, I chose this model to predict safety metrics in the w
 Forest Models that predict the probability of mugging and pedestrian
 car collision in the City of Toronto*
 
+## How Does CityTrek Work?
+I used Dijkstra's Shortest Path to route walking paths in CityTrek. From Open Streetmaps,
+ I input the City of Toronto walking path network as a weighted graph, where the nodes are intersections
+and the roads are edges. Next, I used an inverse distance weighting interpolation to 
+find the probability of being mugged or hit by oncoming traffic as a pedestrian at
+each node. Briefly, inverse distance weighting uses values at known 
+locations (i.e., predicted probabilities at each location input into Random Forest models)
+at unknown locations (i.e., nodes in weighted graph). I also extracted shadiness and
+hilliness at each node from terrain layer described above. Following, I used the values
+at each node to estimate what the values will be along each edge. These values were relativized
+to ensure that **weight** of each metric was equivalent to that of **path length**.
+
+### Navigating CityTrek
+When you get to  [**CityTrek**](http://citytrek.live/), you will be provided with a brief explanation of how to use
+ the web application. Next, you enter the start location (.e.g, Casa Loma) and end 
+ location (e.g., Ripley's Aquarium). The final step is to weight each of the metrics using a slider,
+ from low priority (on the left) to high priority (on the right). Next, you hit go,
+ and you will be given a map that shows your shortest path in **grey** and optimized path
+ in **green**. Below the map, you will be provided with information on the length of both
+ paths and the time they will take to complete. 
+ 
+ ## Requirements 
+ CityTrek is hosted on amazon web service, on a 16 GB instance. I also used Flask,
+ Gunicorn and N'ginx. You can check the **environment.yml** file to view the 
+ dependencies for the web application, data processing, cleaning and models. 
+
 
